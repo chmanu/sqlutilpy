@@ -568,8 +568,10 @@ def upload(tableName, arrays, names, db="wsdb", driver="psycopg2", user=None,
         try:
             thread = psycopg2.extensions.get_wait_callback()
             psycopg2.extensions.set_wait_callback(None)
-            #cur.copy_from(f, tableName, sep=sep, columns=names)
-            cur.copy_from(f, tableName, sep=sep)
+            if cols<>'':
+                cur.copy_from(f, tableName, sep=sep)
+            else:
+                cur.copy_from(f, tableName, sep=sep, columns=names)
         finally:
             psycopg2.extensions.set_wait_callback(thread)
     except BaseException:
