@@ -202,9 +202,9 @@ def __getDType(row, typeCodes, strLength):
         1022: 'f8',
         1042: '|U%d',  # character()
         1043: '|U%d',  # varchar
-        1700: 'f8',	 # numeric
+        1700: 'f8',      # numeric
         1114: '<M8[us]',  # timestamp
-        1082: '<M8[us]'	 # date
+        1082: '<M8[us]'  # date
     }
     strTypes = [25, 1042, 1043]
 
@@ -483,30 +483,56 @@ def __create_schema(tableName, arrays, names, temp=False):
     return outp + '(' + ','.join(outp1) + ')'
 
 
-def __print_arrays(arrays, f, sep=' '):
-    hash = dict([
-        (np.int32, '%d'),
-        (np.int64, '%d'),
-        (np.int16, '%d'),
-        (np.uint8,'%d'),
-        (np.float32, '%.18e'),
-        (np.float64, '%.18e'),
-        (np.string_, '%s'),
-        (np.str_,'%s'),
-        (np.datetime64,'%s'),
-        (np.bool_,'%d')
-    ])
-    fmt = [hash[x.dtype.type] for x in arrays]
+def __print_arrays(arrays, f, sep=' ', cols=''):
     recarr = np.rec.fromarrays(arrays)
-    np.savetxt(f, recarr, fmt=fmt,delimiter=sep)
+    if cols<> '':
+          fmt='%s'
+          nvrecarr=[]
+          #cols='1,2,3,4,5-6,1-127'
+          cols_tab=cols.split(',')
+          for i in recarr:
+              recordstr=''
+              tabi=str(i).strip('[]()').split(',')
+              for itercols in cols_tab:
+                  if recordstr<>'':
+                      recordstr+=sep
+                  if '-' in itercols:
+                      cols_begin=int(itercols.split('-')[0])-1
+                      cols_end=int(itercols.split('-')[1])
+                      recordstr+='{'+','.join(tabi[cols_begin:cols_end]).strip('[]()')+'}'
+                  else:
+                      recordstr+=str(tabi[int(itercols)-1])
+              nvrecarr.append([recordstr])
+
+          np.savetxt(f, nvrecarr, fmt=fmt, delimiter=sep)
+
+    else:
+        hash = dict([
+            (np.int32, '%d'),
+            (np.int64, '%d'),
+            (np.int16, '%d'),
+            (np.uint8,'%d'),
+            (np.float32, '%.18e'),
+            (np.float64, '%.18e'),
+            (np.string_, '%s'),
+            (np.str_,'%s'),
+            (np.datetime64,'%s'),
+            (np.bool_,'%d')
+        ])
+        fmt = [hash[x.dtype.type] for x in arrays]
+        np.savetxt(f, recarr, fmt=fmt,delimiter=sep)
 
 
 def upload(tableName, arrays, names, db="wsdb", driver="psycopg2", user=None,
            password=None, host='locahost',
            conn=None, preamb=None, timeout=None,
            noCommit=False, temp=False,
-           analyze=False, createTable=True):
+           analyze=False, createTable=True, cols=''):
     """ Upload the data stored in the tuple of arrays in the DB
+
+    ATTENTION:
+      the cols parameter implies using data as string, the behaviour can be different.
+
 
     Parameters
     ----------
@@ -532,15 +558,18 @@ def upload(tableName, arrays, names, db="wsdb", driver="psycopg2", user=None,
     try:
         cur = getCursor(conn, driver=driver, preamb=preamb, notNamed=True)
         if createTable:
+            if cols<>'':
+                raise Exception('Fonctionnality not yet implemented : when cols is specified, the table must exist.')
             query1 = __create_schema(tableName, arrays, names, temp=temp)
             cur.execute(query1)
         f = StringIO()
-        __print_arrays(arrays, f, sep=sep)
+        __print_arrays(arrays, f, sep=sep, cols=cols)
         f.seek(0)
         try:
             thread = psycopg2.extensions.get_wait_callback()
             psycopg2.extensions.set_wait_callback(None)
-            cur.copy_from(f, tableName, sep=sep, columns=names)
+            #cur.copy_from(f, tableName, sep=sep, columns=names)
+            cur.copy_from(f, tableName, sep=sep)
         finally:
             psycopg2.extensions.set_wait_callback(thread)
     except BaseException:
@@ -563,7 +592,7 @@ def upload(tableName, arrays, names, db="wsdb", driver="psycopg2", user=None,
         conn.close()  # do not close if we were given the connection
 
 
-def local_join(query, tableName, arrays, names, db=None, 
+def local_join(query, tableName, arrays, names, db=None,
                driver="psycopg2", user=None,
                password=None, host='locahost',
                port=5432,
